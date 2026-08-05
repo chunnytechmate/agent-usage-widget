@@ -2,6 +2,7 @@
 
 const { spawn } = require('child_process');
 const readline = require('readline');
+const { resolveCodexCommand } = require('./codex-path');
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -9,7 +10,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 // Codex owns OAuth token storage and refresh; this widget never reads or sends
 // the token itself. The app-server protocol is newline-delimited JSON-RPC.
 function fetchGptUsage(cfg = {}) {
-  const command = cfg.codexPath || process.env.CODEX_BIN || 'codex';
+  const command = resolveCodexCommand(cfg);
 
   return new Promise((resolve, reject) => {
     const child = spawn(command, ['app-server'], {

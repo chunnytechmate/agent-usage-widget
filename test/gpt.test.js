@@ -2,7 +2,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { normalize } = require('../src/gpt');
+const { resolveCodexCommand } = require('../src/codex-path');
 
 test('normalizes primary and secondary Codex windows', () => {
   const result = normalize({
@@ -50,4 +54,31 @@ test('prefers the multi-bucket rate limit response without duplicating the legac
 
 test('returns an idle provider when no rate-limit windows are available', () => {
   assert.deepEqual(normalize({}).rows, []);
+});
+
+test('resolves Codex installed under NVM when GUI PATH is minimal', (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-path-'));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const olderBin = path.join(home, '.nvm', 'versions', 'node', 'v20.1.0', 'bin');
+  const currentBin = path.join(home, '.nvm', 'versions', 'node', 'v24.2.0', 'bin');
+  fs.mkdirSync(olderBin, { recursive: true });
+  fs.mkdirSync(currentBin, { recursive: true });
+  fs.writeFileSync(path.join(olderBin, 'codex'), '');
+  fs.writeFileSync(path.join(currentBin, 'codex'), '');
+  fs.chmodSync(path.join(olderBin, 'codex'), 0o755);
+  fs.chmodSync(path.join(currentBin, 'codex'), 0o755);
+
+  assert.equal(resolveCodexCommand({}, {
+    env: { PATH: '/usr/local/bin:/usr/bin:/bin' },
+    platform: 'linux',
+    home,
+  }), path.join(currentBin, 'codex'));
+});
+
+test('Codex path override takes precedence over automatic discovery', () => {
+  assert.equal(resolveCodexCommand({ codexPath: '/opt/codex' }, {
+    env: { CODEX_BIN: '/env/codex' },
+    platform: 'linux',
+    home: '/unused',
+  }), '/opt/codex');
 });

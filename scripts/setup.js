@@ -10,6 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { resolveCodexCommand } = require('../src/codex-path');
 
 const ROOT = path.join(__dirname, '..');
 const ENV = path.join(ROOT, '.env');
@@ -157,7 +158,8 @@ const zaiKey = (process.env.ZAI_API_KEY || envVals.ZAI_API_KEY || '').trim();
 const hasClaude = fs.existsSync(CLAUDE_CRED);
 let hasCodex = false;
 try {
-  execFileSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'ignore' });
+  const codexCommand = resolveCodexCommand();
+  execFileSync(codexCommand, ['--version'], { stdio: 'ignore' });
   hasCodex = true;
 } catch { /* not installed or not on PATH */ }
 

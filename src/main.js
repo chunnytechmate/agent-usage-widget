@@ -232,7 +232,16 @@ async function fetchProvider(id, name, fn) {
     const cached = lastGood[id];
     return cached
       ? { id, name, ...cached, stale: true, error: e.message, status: e.status || null }
-      : { id, name, ok: false, error: e.message, status: e.status || null, noKey: !!e.noKey };
+      : {
+        id,
+        name,
+        ok: false,
+        error: e.message,
+        status: e.status || null,
+        noKey: !!e.noKey,
+        noCli: !!e.noCli,
+        noAuth: !!e.noAuth,
+      };
   }
 }
 

@@ -3,8 +3,10 @@ const path = require('path');
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, globalShortcut } = require('electron');
 const config = require('./config');
 const { fetchUsage } = require('./usage');
+const { fetchGptUsage } = require('./gpt');
 const { fetchZaiUsage } = require('./zai');
 const { getActiveModel } = require('./active-model');
+const { getPeakState } = require('./peak');
 const { trayIconDataUrl } = require('./icon');
 const autostart = require('./autostart');
 
@@ -81,7 +83,7 @@ function createWindow() {
 function createTray() {
   const icon = nativeImage.createFromDataURL(trayIconDataUrl());
   tray = new Tray(icon);
-  tray.setToolTip('Claude Usage Overlay');
+  tray.setToolTip('Agent Usage Widget');
   rebuildTrayMenu();
   tray.on('click', () => toggleShow());
 }
@@ -134,22 +136,22 @@ function rebuildTrayMenu() {
       label: 'Providers',
       submenu: [
         {
-          label: 'Both (Claude + Z.AI)',
-          type: 'radio',
-          checked: cfg.claudeEnabled && cfg.zaiEnabled,
-          click: () => setProviders({ claude: true, zai: true }),
+          label: 'Claude',
+          type: 'checkbox',
+          checked: cfg.claudeEnabled,
+          click: (item) => setProvider('claude', item.checked),
         },
         {
-          label: 'Claude only',
-          type: 'radio',
-          checked: cfg.claudeEnabled && !cfg.zaiEnabled,
-          click: () => setProviders({ claude: true, zai: false }),
+          label: 'GPT (Codex)',
+          type: 'checkbox',
+          checked: cfg.gptEnabled,
+          click: (item) => setProvider('gpt', item.checked),
         },
         {
-          label: 'Z.AI only',
-          type: 'radio',
-          checked: !cfg.claudeEnabled && cfg.zaiEnabled,
-          click: () => setProviders({ claude: false, zai: true }),
+          label: 'Z.AI',
+          type: 'checkbox',
+          checked: cfg.zaiEnabled,
+          click: (item) => setProvider('zai', item.checked),
         },
       ],
     },
@@ -185,10 +187,11 @@ function toggleShow() {
   if (win.isVisible()) win.hide(); else win.show();
 }
 
-// Switch provider modes (Both / Claude only / Z.AI only) from the tray submenu.
-function setProviders({ claude, zai }) {
-  cfg.claudeEnabled = claude;
-  cfg.zaiEnabled = zai;
+// Toggle providers independently from the tray submenu.
+function setProvider(id, enabled) {
+  const key = `${id}Enabled`;
+  if (!(key in cfg)) return;
+  cfg[key] = enabled;
   config.save(cfg);
   rebuildTrayMenu();
   poll();
@@ -241,8 +244,13 @@ async function poll() {
   try {
     const jobs = [];
     if (cfg.claudeEnabled) jobs.push(fetchProvider('claude', 'Claude', () => fetchUsage()));
+    if (cfg.gptEnabled) jobs.push(fetchProvider('gpt', 'GPT', () => fetchGptUsage(cfg)));
     if (cfg.zaiEnabled) jobs.push(fetchProvider('zai', 'Z.AI', () => fetchZaiUsage(cfg)));
     const providers = await Promise.all(jobs);
+    // GLM Coding Plan peak window (Mon–Fri 14:00–18:00 UTC+8) is surfaced on the
+    // Z.AI cell so you can see when quota is billed at 2×. Computed once per poll.
+    const zai = providers.find((p) => p.id === 'zai');
+    if (zai) zai.peak = getPeakState();
     // Active model is detected per-poll by reading Claude Code's newest session
     // transcript, so it tracks model switches without restarting the widget.
     const activeModel = getActiveModel();

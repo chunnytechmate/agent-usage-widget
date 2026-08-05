@@ -10,7 +10,8 @@ const path = require('path');
 const { app } = require('electron');
 
 const ROOT = path.join(__dirname, '..');
-const ENTRY_NAME = 'claude-usage-widget.desktop';
+const ENTRY_NAME = 'agent-usage-widget.desktop';
+const LEGACY_ENTRY_NAME = 'claude-usage-widget.desktop';
 
 function autostartDir() {
   const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
@@ -19,6 +20,10 @@ function autostartDir() {
 
 function autostartFile() {
   return path.join(autostartDir(), ENTRY_NAME);
+}
+
+function legacyAutostartFile() {
+  return path.join(autostartDir(), LEGACY_ENTRY_NAME);
 }
 
 // Wrap a path in double quotes if it contains characters the XDG desktop-entry
@@ -45,7 +50,7 @@ function desktopEntry() {
   return [
     '[Desktop Entry]',
     'Type=Application',
-    'Name=Claude Usage Widget',
+    'Name=Agent Usage Widget',
     `Exec=${exec.join(' ')}`,
     `Path=${ROOT}`,
     `Icon=${path.join(ROOT, 'src', 'assets', 'tray.png')}`,
@@ -57,7 +62,8 @@ function desktopEntry() {
 
 function isEnabled() {
   if (process.platform === 'linux') {
-    try { fs.accessSync(autostartFile()); return true; } catch { return false; }
+    try { fs.accessSync(autostartFile()); return true; } catch { /* try legacy name */ }
+    try { fs.accessSync(legacyAutostartFile()); return true; } catch { return false; }
   }
   return app.getLoginItemSettings().openAtLogin;
 }
@@ -68,8 +74,10 @@ function setEnabled(on) {
     if (on) {
       fs.mkdirSync(autostartDir(), { recursive: true });
       fs.writeFileSync(file, desktopEntry());
+      try { fs.unlinkSync(legacyAutostartFile()); } catch { /* already gone */ }
     } else {
       try { fs.unlinkSync(file); } catch { /* already gone */ }
+      try { fs.unlinkSync(legacyAutostartFile()); } catch { /* already gone */ }
     }
     return;
   }

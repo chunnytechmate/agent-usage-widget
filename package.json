@@ -1,16 +1,20 @@
 {
-  "name": "claude-usage-widget",
+  "name": "agent-usage-widget",
   "version": "1.0.0",
-  "description": "Horizontal taskbar widget showing real-time rate-limit usage for Claude and Z.AI",
+  "description": "Horizontal taskbar widget showing real-time rate-limit usage for Claude, GPT/Codex, and Z.AI",
   "main": "src/main.js",
   "scripts": {
     "start": "node scripts/start.js",
     "dev": "node scripts/start.js --dev",
-    "setup": "node scripts/setup.js"
+    "setup": "node scripts/setup.js",
+    "test": "node --test"
   },
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^43.3.0"
   }
 }

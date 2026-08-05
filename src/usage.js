@@ -30,7 +30,7 @@ async function fetchUsage() {
       Authorization: `Bearer ${auth.token}`,
       'anthropic-beta': 'oauth-2025-04-20',
       'anthropic-version': '2023-06-01',
-      'User-Agent': 'claude-usage-widget/1.0',
+      'User-Agent': 'agent-usage-widget/1.0',
       Accept: 'application/json',
     },
   });

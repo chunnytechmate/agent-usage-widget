@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Smart first-run setup for claude-usage-widget.
+// Smart first-run setup for agent-usage-widget.
 //   - makes sure node_modules is installed
 //   - creates a local .env from .env.example (never overwrites an existing one)
 //   - reports which providers are ready to use right now
@@ -61,12 +61,12 @@ function createWindowsShortcut() {
   const script = [
     `$ErrorActionPreference='Stop'`,
     `$ws=New-Object -ComObject WScript.Shell`,
-    `$lnk=[Environment]::GetFolderPath('Desktop')+'\\Claude Usage Widget.lnk'`,
+    `$lnk=[Environment]::GetFolderPath('Desktop')+'\\Agent Usage Widget.lnk'`,
     `$s=$ws.CreateShortcut($lnk)`,
     `$s.TargetPath='${q(vbs)}'`,
     `$s.WorkingDirectory='${q(ROOT)}'`,
     `$s.IconLocation='${q(ico)},0'`,
-    `$s.Description='Claude + Z.AI usage widget'`,
+    `$s.Description='Claude + GPT/Codex + Z.AI usage widget'`,
     `$s.Save()`,
     `Write-Output $lnk`,
   ].join(';');
@@ -90,13 +90,13 @@ function createLinuxDesktopEntry() {
   const entry = [
     '[Desktop Entry]',
     'Type=Application',
-    'Name=Claude Usage Widget',
+    'Name=Agent Usage Widget',
     `Exec=${process.execPath} ${startJs}`,
     `Path=${ROOT}`,
     `Icon=${icon}`,
     'Terminal=false',
     'Categories=Utility;',
-    'Comment=Real-time rate-limit usage for Claude and Z.AI',
+    'Comment=Real-time rate-limit usage for Claude, GPT/Codex, and Z.AI',
   ].join('\n') + '\n';
 
   const writeEntry = (file) => { fs.writeFileSync(file, entry); fs.chmodSync(file, 0o755); };
@@ -106,8 +106,9 @@ function createLinuxDesktopEntry() {
   const appsDir = path.join(dataHome, 'applications');
   try {
     fs.mkdirSync(appsDir, { recursive: true });
-    const appEntry = path.join(appsDir, 'claude-usage-widget.desktop');
+    const appEntry = path.join(appsDir, 'agent-usage-widget.desktop');
     writeEntry(appEntry);
+    try { fs.unlinkSync(path.join(appsDir, 'claude-usage-widget.desktop')); } catch { /* legacy entry absent */ }
     console.log(`  ${green('✓ launcher')} ${appEntry}`);
   } catch (e) {
     console.log(`  ${red('! failed')}  app-menu entry — ${(e.message || '').split('\n')[0]}`);
@@ -117,13 +118,14 @@ function createLinuxDesktopEntry() {
   const desktop = path.join(os.homedir(), 'Desktop');
   if (fs.existsSync(desktop)) {
     try {
-      writeEntry(path.join(desktop, 'claude-usage-widget.desktop'));
-      console.log(`  ${green('✓ launcher')} ${path.join(desktop, 'claude-usage-widget.desktop')}`);
+      writeEntry(path.join(desktop, 'agent-usage-widget.desktop'));
+      try { fs.unlinkSync(path.join(desktop, 'claude-usage-widget.desktop')); } catch { /* legacy entry absent */ }
+      console.log(`  ${green('✓ launcher')} ${path.join(desktop, 'agent-usage-widget.desktop')}`);
     } catch { /* non-fatal */ }
   }
 }
 
-console.log(bold('\nclaude-usage-widget — setup\n'));
+console.log(bold('\nagent-usage-widget — setup\n'));
 
 // 1) dependencies
 if (fs.existsSync(NODE_MODULES)) {
@@ -153,27 +155,32 @@ else console.log(`  ${yellow('! skip')}    desktop launcher (unsupported on ${pr
 const envVals = parseDotenv(ENV);
 const zaiKey = (process.env.ZAI_API_KEY || envVals.ZAI_API_KEY || '').trim();
 const hasClaude = fs.existsSync(CLAUDE_CRED);
+let hasCodex = false;
+try {
+  execFileSync(process.platform === 'win32' ? 'where' : 'which', ['codex'], { stdio: 'ignore' });
+  hasCodex = true;
+} catch { /* not installed or not on PATH */ }
 
 console.log(bold('\nProviders'));
 status('Claude', hasClaude,
-  'no ~/.claude/.credentials.json — sign in with Claude Code, or run in Z.AI-only mode');
+  'no ~/.claude/.credentials.json — sign in with Claude Code, or disable Claude');
+status('GPT (Codex)', hasCodex,
+  'Codex CLI not found — install/sign in to Codex, or disable GPT');
 status('Z.AI', !!zaiKey,
-  `open ${bold(ENV)} and set ZAI_API_KEY=… , or run in Claude-only mode`);
+  `open ${bold(ENV)} and set ZAI_API_KEY=… , or disable Z.AI`);
 
-console.log(bold('\nModes (toggle from the tray → Providers)'));
-const both = hasClaude && !!zaiKey;
-console.log(`  ${both ? green('ready') : dim('ready*')}    Both (Claude + Z.AI)`);
-console.log(`  ${hasClaude ? green('ready') : red('no')}      Claude only`);
-console.log(`  ${zaiKey ? green('ready') : red('no')}      Z.AI only`);
-if (!both) console.log(dim('  * add the missing piece above to unlock this mode'));
+console.log(bold('\nProviders (toggle each from the tray → Providers)'));
+console.log(`  ${hasClaude ? green('ready') : red('no')}      Claude`);
+console.log(`  ${hasCodex ? green('ready') : red('no')}      GPT (Codex)`);
+console.log(`  ${zaiKey ? green('ready') : red('no')}      Z.AI`);
 
 console.log(bold('\nNext'));
 console.log(`  npm start            ${dim('# launch the widget')}`);
 if (process.platform === 'win32') {
-  console.log(`  Desktop shortcut     ${dim('# double-click "Claude Usage Widget"')}`);
+  console.log(`  Desktop shortcut     ${dim('# double-click "Agent Usage Widget"')}`);
   console.log(`  start-overlay.vbs    ${dim('# launch with no console window')}`);
 } else if (process.platform === 'linux') {
-  console.log(`  App menu             ${dim('# find "Claude Usage Widget" in your applications')}`);
+  console.log(`  App menu             ${dim('# find "Agent Usage Widget" in your applications')}`);
   console.log(`  start-overlay.sh     ${dim('# launch with no terminal window')}`);
   console.log(`  Tray → Launch at login ${dim('# start the widget when you sign in')}`);
 }

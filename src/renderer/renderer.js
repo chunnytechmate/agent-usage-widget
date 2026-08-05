@@ -4,7 +4,7 @@ const cellsEl = document.getElementById('cells');
 const collapseBtn = document.getElementById('btn-collapse');
 
 // Per-provider accent colors for the cell dot.
-const ACCENT = { claude: '#d97757', zai: '#4a8ee0' };
+const ACCENT = { claude: '#d97757', gpt: '#10a37f', zai: '#4a8ee0' };
 
 let lastPayload = null;
 let collapsed = false;
@@ -78,6 +78,8 @@ function buildProviderCells(prov, am) {
     cell.appendChild(dot);
     cell.appendChild(el('span', 'cell-err-text', `${prov.name}: ${msg}`));
     if (prov.noKey) cell.title = `${prov.name}: add ZAI_API_KEY to your .env file (see README)`;
+    if (prov.noCli) cell.title = 'GPT: install the Codex CLI and make sure `codex` is on PATH';
+    if (prov.noAuth) cell.title = 'GPT: sign in with `codex login`';
     if (prov.rateLimited && prov.retryAt) cell.title = 'retry in ' + fmtCountdown(prov.retryAt);
     frag.appendChild(cell);
     return frag;
@@ -143,14 +145,21 @@ function buildCell(prov, row, am) {
   const active = rowIsActive(row, am);
   if (active) cell.classList.add('is-active');
 
+  // GLM Coding Plan peak window (attached only to the Z.AI provider). While
+  // active, the bar/dot go amber and the reset line becomes a peak countdown;
+  // the quota reset moves to the tooltip so it isn't lost.
+  const peak = prov.peak || null;
+  const peakActive = !!(peak && peak.active);
+  if (peakActive) cell.classList.add('is-peak');
+
   const head = el('div', 'cell-head');
   const dot = el('span', 'cell-dot');
-  dot.style.background = ACCENT[prov.id] || '#888';
+  dot.style.background = peakActive ? 'var(--warning)' : (ACCENT[prov.id] || '#888');
   head.appendChild(dot);
   head.appendChild(el('span', 'cell-label', shortLabel(row)));
   if (active) head.appendChild(el('span', 'active-badge', 'Active'));
   const pct = el('span', 'cell-pct', (row.percent || 0) + '%');
-  pct.style.color = colorFor(row.severity);
+  pct.style.color = peakActive ? 'var(--warning)' : colorFor(row.severity);
   head.appendChild(pct);
   cell.appendChild(head);
 
@@ -160,7 +169,16 @@ function buildCell(prov, row, am) {
   bar.appendChild(fill);
   cell.appendChild(bar);
 
-  if (row.resetsAt) cell.appendChild(el('div', 'cell-reset', fmtReset(row.resetsAt)));
+  if (peakActive && peak.endsAt) {
+    cell.appendChild(el('div', 'cell-reset', fmtPeak(peak.endsAt)));
+    if (row.resetsAt) cell.title = `${prov.name} quota ${fmtReset(row.resetsAt)}`;
+  } else {
+    if (row.resetsAt) cell.appendChild(el('div', 'cell-reset', fmtReset(row.resetsAt)));
+    if (peak && peak.nextStartAt) {
+      const np = fmtNextPeak(peak.nextStartAt);
+      cell.title = cell.title ? `${cell.title} · ${np}` : np;
+    }
+  }
   return cell;
 }
 
@@ -168,6 +186,7 @@ function shortLabel(row) {
   if (row.key === 'session') return 'Session';
   if (row.key === 'weekly') return 'Weekly';
   if (row.key === 'zai-tokens') return 'Z.AI';
+  if (row.key.startsWith('gpt:')) return row.label === 'Usage' ? 'GPT' : `GPT ${row.label}`;
   if (row.key.startsWith('scoped:')) return row.label;  // model name, e.g. Fable
   return row.label;
 }
@@ -223,6 +242,32 @@ function fmtReset(iso) {
   if (sameDay) return `reset ${time} (${cd})`;
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   return `reset ${days[target.getDay()]} ${time} (${cd})`;
+}
+
+// GLM peak countdown for the reset line: "peak · 2× · ends 17:00 (2h 15min)".
+// Countdown is recomputed from endsAt on every render, so it stays fresh between
+// polls (the renderer re-renders every 30s).
+function fmtPeak(endsAt) {
+  if (!endsAt) return 'peak · 2×';
+  const target = new Date(endsAt);
+  const now = new Date();
+  const secs = Math.max(0, Math.floor((target - now) / 1000));
+  const totalH = Math.floor(secs / 3600);
+  const totalM = Math.floor((secs % 3600) / 60);
+  const cd = totalH > 0
+    ? `${totalH}h ${String(totalM).padStart(2, '0')}min`
+    : `${totalM}min`;
+  const time = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `peak · 2× · ends ${time} (${cd})`;
+}
+
+// Next peak start for the cell tooltip: "next GLM peak Mon 13:00".
+function fmtNextPeak(nextStartAt) {
+  if (!nextStartAt) return '';
+  const target = new Date(nextStartAt);
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const time = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `next GLM peak ${days[target.getDay()]} ${time}`;
 }
 
 // Compact countdown for error tooltips ("1h 30m"). Accepts an ISO string or epoch ms.

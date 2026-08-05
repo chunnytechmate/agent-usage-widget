@@ -1,21 +1,21 @@
-# Usage Strip (Claude + Z.AI)
+# Agent Usage Widget (Claude + GPT/Codex + Z.AI)
 
 A tiny always-on-top **horizontal strip** that docks just above your taskbar/panel and
-shows real-time rate-limit usage for **Claude** and **Z.AI** side by side — so you never
+shows real-time rate-limit usage for **Claude**, **GPT/Codex**, and **Z.AI** side by side — so you never
 have to open a browser tab to check how close you are to the limit.
 
 ![overlay](docs/preview.png)
 
 Inspired by the taskbar *essential-mode* look of
 [claude-usage-widget](https://github.com/niccolo-sabato/claude-usage-widget), but built on
-Electron + plain HTML/CSS/JS and extended with a second provider (Z.AI).
+Electron + plain HTML/CSS/JS and extended into a multi-provider agent usage widget.
 
 ## Features
 
 - **Lives on the panel/taskbar** — docks to the bottom-right, flush above the taskbar or
   panel, always on top, out of the way of your work. Toggle from the tray ("Dock to panel");
   turn it off to float and drag it anywhere.
-- **Two providers, isolated** — Claude and Z.AI fetch independently, so one being down or
+- **Three providers, isolated** — Claude, GPT/Codex, and Z.AI fetch independently, so one being down or
   missing a key never blanks out the other.
 - **Active-model pill** — a pill next to the title shows which Claude Code model you're
   using right now, auto-detected from your newest session transcript (no setup). When that
@@ -25,11 +25,16 @@ Electron + plain HTML/CSS/JS and extended with a second provider (Z.AI).
   the percentage above. The Weekly + per-model limits collapse into one stacked cell
   (percent only, no bars) to save horizontal space; their shared reset is shown once.
 - **Reset countdowns** in the `reset 22:10 (50min)` / `reset Thu 08:59 (4d 19h)` style.
+- **GLM peak-hours indicator** — the Z.AI cell turns amber with a live countdown
+  (`peak · 2× · ends 17:00 (2h 15min)`) while inside GLM's Coding Plan peak window,
+  where quota is billed at 2×. Outside the window the cell is normal and the next
+  peak start appears in its tooltip. Claude has no active peak (its throttle was
+  removed in May 2026), so only Z.AI is flagged.
 - **No telemetry, keys stay local** — data goes only to each provider's own usage endpoint.
   No key ships with the repo (`.env` is gitignored); no token or key is ever written,
   logged, or sent anywhere else.
-- **Three provider modes** — Both / Claude only / Z.AI only, switched from the tray. Only
-  the enabled provider(s) are polled.
+- **Independent provider toggles** — enable or disable Claude, GPT/Codex, and Z.AI from
+  the tray. Only enabled providers are polled.
 
 ## How it works
 
@@ -41,10 +46,25 @@ Electron + plain HTML/CSS/JS and extended with a second provider (Z.AI).
   `GET https://api.anthropic.com/api/oauth/usage` (`anthropic-beta: oauth-2025-04-20`).
 - Shows the 5-hour session, weekly (all models), and per-model (scoped, e.g. Fable) limits.
 
+**GPT/Codex** (`src/gpt.js`)
+- Uses the official `codex app-server` interface and its `account/rateLimits/read`
+  method to read ChatGPT/Codex usage windows.
+- Reuses your local Codex login. Codex owns OAuth storage and token refresh; this widget
+  never reads, logs, or sends the token itself.
+- Shows every returned primary/secondary or named usage bucket, including utilization,
+  reset countdown, and severity. Install the Codex CLI and run `codex login` once.
+- You can override the executable with `CODEX_BIN` or `codexPath` in the widget config.
+
 **Z.AI** (`src/zai.js`)
 - Polls `GET https://api.z.ai/api/monitor/usage/quota/limit` with
   `Authorization: Bearer <ZAI_API_KEY>`.
 - Shows the TOKENS_LIMIT row with a reset countdown.
+- **Peak hours** (`src/peak.js`): GLM's Coding Plan charges **2× quota** Mon–Fri
+  **14:00–18:00 UTC+8** (Beijing) — off-peak is 50%. In Thailand (UTC+7) that's
+  **13:00–17:00**, Mon–Fri. The window is computed against the Beijing clock, so it
+  stays correct in any timezone. While active, the Z.AI cell goes amber with a
+  countdown; Claude is not flagged, since Anthropic removed its peak throttle in
+  May 2026. Set `CU_PEAK_FORCE=peak|off` at launch to preview either state.
 - Key resolution order (first hit wins): `ZAI_API_KEY` env var → `zaiApiKey` in config →
   the widget's own `.env` file at the project root. No path or key is bundled with the
   repo — copy `.env.example` to `.env` and add your key (`.env` is gitignored), or run
@@ -53,6 +73,8 @@ Electron + plain HTML/CSS/JS and extended with a second provider (Z.AI).
 
 ## Install
 
+Requires Node.js 22.12 or newer.
+
 ```sh
 npm install      # first time only
 npm run setup    # one-time: creates your local .env and shows which providers are ready
@@ -60,10 +82,10 @@ npm start
 ```
 
 `npm run setup` copies `.env.example` → `.env` (if you don't already have one), then
-reports which providers are ready so you know at a glance whether to run **Claude only**,
-**Z.AI only**, or **both**. Claude needs no key (it reuses Claude Code's OAuth token);
-Z.AI needs `ZAI_API_KEY` in your `.env` (or as an env var). It also drops a clickable
-launcher: a **Claude Usage Widget** desktop shortcut on Windows, or an app-menu entry
+reports which providers are ready. Claude needs no key (it reuses Claude Code's OAuth token);
+GPT needs a locally installed and signed-in Codex CLI; Z.AI needs `ZAI_API_KEY` in your
+`.env` (or as an env var). It also drops a clickable launcher: an **Agent Usage Widget**
+desktop shortcut on Windows, or an app-menu entry
 (`~/.local/share/applications/…`) on Linux — double-click to launch (no console window).
 
 ## Run
@@ -75,27 +97,27 @@ npm start
 Or launch it silently (no console window):
 
 - **Windows** — double-click **`start-overlay.vbs`**.
-- **Linux** — run **`./start-overlay.sh`**, or open **Claude Usage Widget** from your app
+- **Linux** — run **`./start-overlay.sh`**, or open **Agent Usage Widget** from your app
   menu after `npm run setup`.
 
 Both clear `ELECTRON_RUN_AS_NODE`, which some parent shells (VS Code's remote server,
 Claude Code's own runtime) set and which would otherwise stop Electron from starting a GUI.
 (`npm start` already clears it cross-platform via `scripts/start.js`.)
 
-## Provider modes
+## Providers
 
-Three modes, switched from the tray (**Providers** submenu). Only the enabled provider(s)
-are polled, so each mode "just works" with whatever credentials you have:
+Toggle each provider independently from the tray (**Providers** submenu). Only enabled
+providers are polled:
 
-- **Both (Claude + Z.AI)** — default.
-- **Claude only** — no key needed; reads `~/.claude/.credentials.json`.
-- **Z.AI only** — needs `ZAI_API_KEY`; Claude isn't fetched.
+- **Claude** — enabled by default; reads `~/.claude/.credentials.json`.
+- **GPT (Codex)** — enabled by default; uses your signed-in Codex CLI session.
+- **Z.AI** — enabled by default; needs `ZAI_API_KEY`.
 
 ## Controls
 
 - **↻** refresh now. **–** collapse the strip to just its title chip (click **□** to expand
   again; the state is remembered across restarts).
-- **Tray icon** (right-click) → Refresh, **Providers** (Both / Claude only / Z.AI only),
+- **Tray icon** (right-click) → Refresh, **Providers** (independent toggles),
   Dock to panel (on/off), Click-through, Always on top (forced on while docked), Opacity,
   Launch at login, Show / Hide, Quit.
 - **Show / hide** the whole overlay: click the tray icon or press **Ctrl+Shift+U** (works
@@ -106,8 +128,9 @@ are polled, so each mode "just works" with whatever credentials you have:
 ## Config
 
 Settings persist to `overlay-config.json` in Electron's `userData` folder
-(`%APPDATA%\claude-usage-widget` on Windows, `~/.config/claude-usage-widget` on Linux,
-`~/Library/Application Support/claude-usage-widget` on macOS). Notable keys:
+(`%APPDATA%\agent-usage-widget` on Windows, `~/.config/agent-usage-widget` on Linux,
+`~/Library/Application Support/agent-usage-widget` on macOS). On first run after the
+rename, existing `claude-usage-widget` settings are migrated automatically. Notable keys:
 
 | key | default | purpose |
 |-----|---------|---------|
@@ -118,7 +141,9 @@ Settings persist to `overlay-config.json` in Electron's `userData` folder
 | `pollSeconds` | `180` | refresh interval |
 | `collapsed` | `false` | start collapsed to the title chip |
 | `claudeEnabled` | `true` | poll the Claude provider |
+| `gptEnabled` | `true` | poll GPT/Codex rate limits through the Codex CLI |
 | `zaiEnabled` | `true` | poll the Z.AI provider |
+| `codexPath` | `null` | custom Codex executable; `null` resolves `codex` from PATH |
 | `zaiApiKey` | — | explicit Z.AI key (overrides `.env`) |
 | `zaiEnvPath` | `null` | custom `.env` path; `null` = project-root `.env` |
 | `launchOnStartup` | `false` | start at login |
@@ -135,9 +160,11 @@ Settings persist to `overlay-config.json` in Electron's `userData` folder
 
 | File | Purpose |
 |------|---------|
-| `src/main.js`    | window, tray, panel/taskbar dock, polls both providers, IPC |
+| `src/main.js`    | window, tray, panel/taskbar dock, polls all enabled providers, IPC |
 | `src/usage.js`   | Claude: token read + `/api/oauth/usage` fetch + normalize |
+| `src/gpt.js`     | GPT/Codex: official app-server rate-limit fetch + normalize |
 | `src/active-model.js` | detect the currently-used Claude Code model from the newest session transcript |
+| `src/peak.js`    | GLM Coding Plan peak-window detection (Mon–Fri 14:00–18:00 UTC+8, 2× quota) |
 | `src/zai.js`     | Z.AI: key read + quota endpoint fetch + normalize |
 | `src/config.js`  | settings persistence + defaults |
 | `src/autostart.js` | start-at-login (XDG autostart on Linux, login item elsewhere) |

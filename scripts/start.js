@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Cross-platform launcher for claude-usage-widget.
+// Cross-platform launcher for agent-usage-widget.
 //   npm start        → node scripts/start.js
 //   npm run dev      → node scripts/start.js --dev
 //

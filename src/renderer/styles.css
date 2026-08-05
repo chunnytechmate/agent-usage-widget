@@ -139,3 +139,12 @@ body.collapsed .cells { display: none; }
   padding: 0 4px;
   line-height: 1.5;
 }
+
+/* GLM peak-hours (Z.AI cell): while inside the Mon–Fri 14:00–18:00 UTC+8 window,
+ * quota is billed at 2×, so the bar/dot turn amber to flag it. Bar fill width
+ * still reflects the quota %; only the color is overridden. The dot color and
+ * percentage color are set inline by renderer.js; here we recolor the bar and
+ * add a gentle pulse to the dot so the state reads at a glance. */
+.cell.is-peak .bar-fill { background: var(--warning); }
+.cell.is-peak .cell-dot { animation: peakPulse 1.6s ease-in-out infinite; }
+@keyframes peakPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }

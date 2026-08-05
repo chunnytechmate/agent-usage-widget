@@ -1,5 +1,5 @@
 #!/bin/sh
-# Launch the Claude Usage Overlay with no lingering terminal window.
+# Launch the Agent Usage Widget with no lingering terminal window.
 # Clears ELECTRON_RUN_AS_NODE just in case the parent shell had it set
 # (VS Code's remote server and Claude Code's runtime do) — scripts/start.js
 # clears it too, but unsetting here avoids a Node-only boot flash.

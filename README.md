@@ -1,10 +1,16 @@
-# Agent Usage Widget (Claude + GPT/Codex + Z.AI)
+# Agent Usage Widget
 
-A tiny always-on-top **horizontal strip** that docks just above your taskbar/panel and
-shows real-time rate-limit usage for **Claude**, **GPT/Codex**, and **Z.AI** side by side — so you never
-have to open a browser tab to check how close you are to the limit.
+See your **Claude**, **GPT/Codex**, and **Z.AI** usage limits in one compact desktop strip.
+It stays above the taskbar, refreshes in the background, and shows both utilization and
+reset time without making you open three dashboards.
 
-![overlay](docs/preview.png)
+![Agent Usage Widget showing Claude, GPT/Codex, and Z.AI limits side by side](docs/preview.png)
+
+| Provider | What the widget reads | Local setup |
+| :--- | :--- | :--- |
+| Claude | Session, weekly, and model-specific limits | Signed-in Claude Code |
+| GPT/Codex | Rate-limit windows from the official Codex app server | Signed-in Codex CLI |
+| Z.AI | Coding Plan token quota and peak-hour status | `ZAI_API_KEY` |
 
 Inspired by the taskbar *essential-mode* look of
 [claude-usage-widget](https://github.com/niccolo-sabato/claude-usage-widget), but built on
@@ -143,7 +149,7 @@ rename, existing `claude-usage-widget` settings are migrated automatically. Nota
 | `claudeEnabled` | `true` | poll the Claude provider |
 | `gptEnabled` | `true` | poll GPT/Codex rate limits through the Codex CLI |
 | `zaiEnabled` | `true` | poll the Z.AI provider |
-| `codexPath` | `null` | custom Codex executable; `null` resolves `codex` from PATH |
+| `codexPath` | `null` | custom Codex executable; `null` auto-discovers PATH and common user-local installs such as NVM |
 | `zaiApiKey` | — | explicit Z.AI key (overrides `.env`) |
 | `zaiEnvPath` | `null` | custom `.env` path; `null` = project-root `.env` |
 | `launchOnStartup` | `false` | start at login |

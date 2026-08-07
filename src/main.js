@@ -1,18 +1,21 @@
 'use strict';
 const path = require('path');
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, globalShortcut, shell } = require('electron');
 const config = require('./config');
 const { fetchUsage } = require('./usage');
 const { fetchGptUsage } = require('./gpt');
 const { fetchZaiUsage } = require('./zai');
 const { getActiveModel } = require('./active-model');
+const { getActivity } = require('./activity');
 const { getPeakState } = require('./peak');
+const { UsageLogger, logFileFor } = require('./usage-log');
 const { trayIconDataUrl } = require('./icon');
 const autostart = require('./autostart');
 
 let win = null;
 let tray = null;
 let pollTimer = null;
+let logger = null;
 let shootTaken = false; // dev-only screenshot gate (fires once when CU_SHOOT=<path> is set)
 let cfg = config.DEFAULTS; // real config loaded in whenReady (needs app paths)
 
@@ -156,6 +159,24 @@ function rebuildTrayMenu() {
       ],
     },
     {
+      label: 'Usage log',
+      submenu: [
+        {
+          label: 'Record usage history',
+          type: 'checkbox',
+          checked: cfg.loggingEnabled,
+          click: (item) => {
+            cfg.loggingEnabled = item.checked;
+            config.save(cfg);
+            if (cfg.loggingEnabled && !logger) initLogger();
+          },
+        },
+        { type: 'separator' },
+        { label: "Open today's log", click: () => openLog(true) },
+        { label: 'Open log folder', click: () => openLog(false) },
+      ],
+    },
+    {
       label: 'Opacity',
       submenu: [
         opacityItem('100%', 1.0),
@@ -180,6 +201,36 @@ function rebuildTrayMenu() {
     { label: 'Quit', click: () => { app.quit(); } },
   ]);
   tray.setContextMenu(menu);
+}
+
+// Usage history lives beside the config, in Electron's userData folder.
+function logDir() {
+  return path.join(app.getPath('userData'), 'logs');
+}
+
+function initLogger() {
+  logger = new UsageLogger({
+    dir: logDir(),
+    options: {
+      retentionDays: cfg.logRetentionDays,
+      heartbeatMinutes: cfg.logHeartbeatMinutes,
+      idleMinutes: cfg.logIdleMinutes,
+      spikePoints: cfg.logSpikePoints,
+    },
+  });
+}
+
+// Open today's log file, falling back to the folder before the first write.
+function openLog(todayOnly) {
+  const fs = require('fs');
+  const dir = logDir();
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const file = logFileFor(dir);
+    shell.openPath(todayOnly && fs.existsSync(file) ? file : dir);
+  } catch (e) {
+    console.error('Could not open the usage log:', e.message);
+  }
 }
 
 function toggleShow() {
@@ -263,7 +314,11 @@ async function poll() {
     // Active model is detected per-poll by reading Claude Code's newest session
     // transcript, so it tracks model switches without restarting the widget.
     const activeModel = getActiveModel();
-    win.webContents.send('usage-update', { providers, fetchedAt: Date.now(), activeModel });
+    const payload = { providers, fetchedAt: Date.now(), activeModel, activity: getActivity() };
+    win.webContents.send('usage-update', payload);
+    // History: append this reading (and how far each meter moved) to the daily
+    // log, so growth while nothing local is running can be found after the fact.
+    if (cfg.loggingEnabled && logger) logger.record(payload);
   } finally {
     pollInFlight = false;
   }
@@ -318,6 +373,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     cfg = config.load();
+    if (cfg.loggingEnabled) initLogger();
     createWindow();
     createTray();
     startPolling();

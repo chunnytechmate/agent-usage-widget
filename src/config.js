@@ -35,6 +35,14 @@ const DEFAULTS = {
   // Leave zaiEnvPath null to read <project>/.env, or point it at any .env you keep.
   zaiApiKey: null,
   zaiEnvPath: null,
+  // Usage history log (userData/logs/usage-YYYY-MM-DD.jsonl). Records what each
+  // meter read at each poll so you can spot quota draining while nothing local
+  // is running — a leaked key, or a session left going. See src/usage-log.js.
+  loggingEnabled: true,
+  logRetentionDays: 30,     // daily files older than this are deleted
+  logHeartbeatMinutes: 15,  // write an unchanged snapshot at least this often
+  logIdleMinutes: 15,       // no local agent transcript for this long => idle
+  logSpikePoints: 10,       // single-interval jump that gets flagged
 };
 
 function load() {

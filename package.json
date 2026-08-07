@@ -7,6 +7,7 @@
     "start": "node scripts/start.js",
     "dev": "node scripts/start.js --dev",
     "setup": "node scripts/setup.js",
+    "log": "node scripts/usage-log.js",
     "test": "node --test"
   },
   "author": "",

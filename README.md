@@ -36,6 +36,10 @@ Electron + plain HTML/CSS/JS and extended into a multi-provider agent usage widg
   where quota is billed at 2×. Outside the window the cell is normal and the next
   peak start appears in its tooltip. Claude has no active peak (its throttle was
   removed in May 2026), so only Z.AI is flagged.
+- **Usage history + leak detection** — every poll is appended to a local daily log with how
+  far each meter moved. Quota that climbs while no local agent has run for 15+ minutes is
+  flagged as an **idle drain** — the signature of a leaked key, a forgotten background job,
+  or a session still running somewhere else. Read it back with `npm run log`.
 - **No telemetry, keys stay local** — data goes only to each provider's own usage endpoint.
   No key ships with the repo (`.env` is gitignored); no token or key is ever written,
   logged, or sent anywhere else.
@@ -76,6 +80,75 @@ Electron + plain HTML/CSS/JS and extended into a multi-provider agent usage widg
   repo — copy `.env.example` to `.env` and add your key (`.env` is gitignored), or run
   `npm run setup` to do it for you.
 - Toggle on/off from the tray ("Providers").
+
+## Usage history & leak detection
+
+A live percentage tells you *where* you are, not *where it went*. The widget therefore keeps
+a history: every poll is reduced to one line — what each meter read, how far it moved since
+the last poll, how fast that is per hour, and who was working at the time — appended to
+`logs/usage-YYYY-MM-DD.jsonl` in the same `userData` folder as the config.
+
+```jsonc
+{"t":"2026-08-07T10:22:53.338Z",
+ "usage":{"claude/session":56,"claude/weekly":10,"gpt/codex:primary":51,"zai/tokens":100},
+ "resets":{"claude/session":"2026-08-07T11:40:00.000Z", …},
+ "idle":{"claude":0,"gpt":1558.3,"zai":0},      // minutes since that agent last ran
+ "active":"Opus", "deltaMin":3,
+ "delta":{"claude/session":2}, "rate":{"claude/session":40},
+ "alerts":[{"type":"idle-drain","level":"warn","metric":"claude/session","delta":2,
+            "idleMin":90,"message":"claude/session +2% while no local agent ran for 90 min"}]}
+```
+
+### What gets flagged
+
+"Is anyone actually working?" is answered from the transcripts each CLI writes while it
+runs — `~/.claude/projects/**.jsonl` for Claude Code, `~/.codex/sessions/**.jsonl` for
+Codex (`src/activity.js`). Claude's meters are judged against Claude Code's transcripts,
+GPT's against Codex's, and Z.AI's against either, since GLM is usually driven through one
+of them. An unknown idle time is never treated as idle, so an unused CLI can't raise alarms.
+
+| alert | means | what to do |
+|---|---|---|
+| `idle-drain` | quota grew while no local agent had run for 15+ min | look for another machine or service on the same key, a background job left running, or a leaked key — then rotate it |
+| `burn-rate` | at the last 30 minutes' pace, the window hits 100% before it resets | something is looping, or it's time to slow down |
+| `spike` | 10+ points in a single interval | one very expensive run — worth knowing which |
+| `window-reset` | the meter fell: its window rolled over | informational, so a summary can tell a reset apart from a lost baseline |
+| `provider-error` | a provider started (or stopped) failing | logged on change, not on every poll |
+
+Alerts are throttled per metric (a drain reports every 15 min, not every poll) — but **every
+delta is always recorded**, so the totals stay exact no matter how the alerts are summarized.
+Long gaps (app closed overnight) are recorded but never blamed on one interval, and a
+provider recovering from its cache can't fake a spike.
+
+### Reading it back
+
+```sh
+npm run log                 # today
+npm run log -- --days 7     # last 7 calendar days
+npm run log -- --alerts     # only the warnings
+npm run log -- -m claude    # only metrics matching "claude"
+npm run log -- --json       # summary + hourly buckets as JSON
+```
+
+```
+metric              start   now  peak   used   idle  resets
+claude/session         5%   33%   99%   +124    +28  1
+claude/weekly         31%   42%   42%    +11      -  0
+
+By hour
+  2026-08-07 08:00Z  claude/session +32 (28 idle)   claude/weekly +1
+
+⚠ Alerts (4)
+  08/07, 03:07 PM  idle-drain   claude/session +2% while no local agent ran for 90 min
+```
+
+`used` counts points gained across the range and survives window resets; `idle` is how many
+of those points burned with nobody working — the number to worry about.
+
+From the tray: **Usage log** → *Record usage history* (on/off), *Open today's log*,
+*Open log folder*. Files older than `logRetentionDays` (30) are deleted automatically.
+Only percentages, plan names, reset times and provider error messages are written — never a
+token, a key, or any prompt content.
 
 ## Install
 
@@ -124,7 +197,8 @@ providers are polled:
 - **↻** refresh now. **–** collapse the strip to just its title chip (click **□** to expand
   again; the state is remembered across restarts).
 - **Tray icon** (right-click) → Refresh, **Providers** (independent toggles),
-  Dock to panel (on/off), Click-through, Always on top (forced on while docked), Opacity,
+  Dock to panel (on/off), Click-through, Always on top (forced on while docked),
+  **Usage log** (record on/off, open today's log, open the folder), Opacity,
   Launch at login, Show / Hide, Quit.
 - **Show / hide** the whole overlay: click the tray icon or press **Ctrl+Shift+U** (works
   even when fully hidden).
@@ -153,6 +227,11 @@ rename, existing `claude-usage-widget` settings are migrated automatically. Nota
 | `zaiApiKey` | — | explicit Z.AI key (overrides `.env`) |
 | `zaiEnvPath` | `null` | custom `.env` path; `null` = project-root `.env` |
 | `launchOnStartup` | `false` | start at login |
+| `loggingEnabled` | `true` | record usage history to `logs/` |
+| `logRetentionDays` | `30` | delete daily log files older than this |
+| `logHeartbeatMinutes` | `15` | log an unchanged snapshot at least this often |
+| `logIdleMinutes` | `15` | no local agent transcript for this long counts as idle |
+| `logSpikePoints` | `10` | single-interval jump that gets flagged |
 
 ## Severity colors
 
@@ -170,6 +249,8 @@ rename, existing `claude-usage-widget` settings are migrated automatically. Nota
 | `src/usage.js`   | Claude: token read + `/api/oauth/usage` fetch + normalize |
 | `src/gpt.js`     | GPT/Codex: official app-server rate-limit fetch + normalize |
 | `src/active-model.js` | detect the currently-used Claude Code model from the newest session transcript |
+| `src/usage-log.js` | usage history: snapshot, deltas, idle-drain / burn-rate alerts, retention |
+| `src/activity.js` | how long since each local agent (Claude Code, Codex) last ran |
 | `src/peak.js`    | GLM Coding Plan peak-window detection (Mon–Fri 14:00–18:00 UTC+8, 2× quota) |
 | `src/zai.js`     | Z.AI: key read + quota endpoint fetch + normalize |
 | `src/config.js`  | settings persistence + defaults |
@@ -179,4 +260,5 @@ rename, existing `claude-usage-widget` settings are migrated automatically. Nota
 | `src/renderer/`  | the strip UI — `index.html`, `styles.css`, `renderer.js` |
 | `scripts/start.js` | cross-platform launcher (`npm start`) — clears `ELECTRON_RUN_AS_NODE`, Linux sandbox fallback |
 | `scripts/setup.js` | `npm run setup` — creates `.env`, desktop/app-menu launcher, provider readiness |
+| `scripts/usage-log.js` | `npm run log` — read the usage history back: totals, hourly gains, alerts |
 | `.env.example`   | template for your gitignored `.env` (set `ZAI_API_KEY`) |

@@ -16,6 +16,8 @@ let win = null;
 let tray = null;
 let pollTimer = null;
 let logger = null;
+let lastPayload = null;      // newest reading, replayed into a rebuilt window
+let lastWindowRebuild = 0;   // crash-loop guard for render-process-gone
 let shootTaken = false; // dev-only screenshot gate (fires once when CU_SHOOT=<path> is set)
 let cfg = config.DEFAULTS; // real config loaded in whenReady (needs app paths)
 
@@ -73,6 +75,26 @@ function createWindow() {
   win.setIgnoreMouseEvents(cfg.clickThrough, { forward: true });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
+  // A window created after the first poll (or rebuilt after a crash) starts
+  // blank, since 'usage-update' only fires on the next poll — up to pollSeconds
+  // away. Hand it the last reading as soon as it can receive one.
+  win.webContents.on('did-finish-load', () => {
+    if (lastPayload && win && !win.isDestroyed()) win.webContents.send('usage-update', lastPayload);
+  });
+
+  // A dead renderer used to strand the whole app: no window, and nothing could
+  // bring one back, because every entry point was guarded by `if (win)`. Rebuild
+  // it once automatically; if it dies again straight away, stop retrying and
+  // leave it to the tray, so a reproducible crash can't become a spin loop.
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error('Renderer stopped:', details && details.reason);
+    const now = Date.now();
+    const looping = now - lastWindowRebuild < 60_000;
+    lastWindowRebuild = now;
+    if (looping) return;
+    setTimeout(() => { if (isDead(win)) rebuildWindow(); }, 1000);
+  });
+
   win.on('moved', () => {
     if (cfg.taskbarMode) return; // docked: ignore manual moves, keep pinned
     const [x, y] = win.getPosition();
@@ -81,6 +103,27 @@ function createWindow() {
   });
 
   win.on('closed', () => { win = null; });
+}
+
+// Unusable window: gone, destroyed, or still an object whose renderer died —
+// a crashed webContents leaves isDestroyed() false and paints nothing, so the
+// window has to be judged on the renderer too.
+function isDead(w) {
+  if (!w || w.isDestroyed()) return true;
+  try { return w.webContents.isCrashed(); } catch { return true; }
+}
+
+function rebuildWindow() {
+  if (win && !win.isDestroyed()) win.destroy(); // fires 'closed', clearing win
+  createWindow();
+}
+
+// The window is disposable; the app is not. Anything that wants to show the
+// widget goes through here, so a missing or broken window is rebuilt instead of
+// silently doing nothing.
+function ensureWindow() {
+  if (isDead(win)) rebuildWindow();
+  return win;
 }
 
 function createTray() {
@@ -234,8 +277,8 @@ function openLog(todayOnly) {
 }
 
 function toggleShow() {
-  if (!win) return;
-  if (win.isVisible()) win.hide(); else win.show();
+  const w = ensureWindow();
+  if (w.isVisible()) w.hide(); else w.show();
 }
 
 // Toggle providers independently from the tray submenu.
@@ -298,8 +341,11 @@ async function fetchProvider(id, name, fn) {
 
 let pollInFlight = false;
 
+// Polling deliberately does not depend on the window. History is the point of
+// the log, and a hidden, closed or crashed window must not create a silent gap
+// in it.
 async function poll() {
-  if (!win || pollInFlight) return;
+  if (pollInFlight) return;
   pollInFlight = true;
   try {
     const jobs = [];
@@ -315,7 +361,8 @@ async function poll() {
     // transcript, so it tracks model switches without restarting the widget.
     const activeModel = getActiveModel();
     const payload = { providers, fetchedAt: Date.now(), activeModel, activity: getActivity() };
-    win.webContents.send('usage-update', payload);
+    lastPayload = payload;
+    if (win && !win.isDestroyed()) win.webContents.send('usage-update', payload);
     // History: append this reading (and how far each meter moved) to the daily
     // log, so growth while nothing local is running can be found after the fact.
     if (cfg.loggingEnabled && logger) logger.record(payload);
@@ -332,10 +379,10 @@ function startPolling() {
 
 // --- IPC from renderer ---
 ipcMain.on('close-app', () => app.quit());
-ipcMain.on('hide-app', () => { if (win) win.hide(); });
+ipcMain.on('hide-app', () => { if (win && !win.isDestroyed()) win.hide(); });
 ipcMain.on('refresh', () => poll(true));
 ipcMain.on('set-size', (_e, { w, h }) => {
-  if (!win) return;
+  if (!win || win.isDestroyed()) return;
   const wa = screen.getPrimaryDisplay().workArea;
   // Auto-size to content: width grows with the number of cells, height with rows.
   // Cap width to the work area so a long strip never spills past the screen edge.
@@ -369,7 +416,13 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => { if (win) { win.show(); win.focus(); } });
+  // Launching again (desktop icon, app menu) is a request to see the widget —
+  // rebuild the window if this instance lost it, rather than appearing dead.
+  app.on('second-instance', () => {
+    const w = ensureWindow();
+    w.show();
+    w.focus();
+  });
 
   app.whenReady().then(() => {
     cfg = config.load();

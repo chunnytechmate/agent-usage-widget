@@ -64,8 +64,8 @@ function normalize(data, auth) {
 
   if (data.seven_day && typeof data.seven_day.utilization === 'number') {
     rows.push({
-      key: 'weekly',
-      label: 'Weekly',
+      key: 'claude-weekly',
+      label: 'Claude Weekly',
       percent: Math.round(data.seven_day.utilization),
       resetsAt: data.seven_day.resets_at || null,
       severity: severityFor(data.seven_day.utilization),

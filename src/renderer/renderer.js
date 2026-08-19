@@ -184,7 +184,7 @@ function buildCell(prov, row, am) {
 
 function shortLabel(row) {
   if (row.key === 'session') return 'Session';
-  if (row.key === 'weekly') return 'Weekly';
+  if (row.key === 'claude-weekly') return 'Claude Weekly';
   if (row.key === 'zai-tokens') return 'Z.AI';
   if (row.key.startsWith('gpt:')) return row.label === 'Usage' ? 'GPT' : `GPT ${row.label}`;
   if (row.key.startsWith('scoped:')) return row.label;  // model name, e.g. Fable

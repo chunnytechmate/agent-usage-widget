@@ -28,7 +28,7 @@ Electron + plain HTML/CSS/JS and extended into a multi-provider agent usage widg
   model is one of the shown limits, its row is tagged **Active**. Updates each poll, so it
   follows model switches without restarting the widget.
 - **Quiet, readable bars** — thin severity-colored progress bars (green / amber / red) with
-  the percentage above. The Weekly + per-model limits collapse into one stacked cell
+  the percentage above. The Claude Weekly + per-model limits collapse into one stacked cell
   (percent only, no bars) to save horizontal space; their shared reset is shown once.
 - **Reset countdowns** in the `reset 22:10 (50min)` / `reset Thu 08:59 (4d 19h)` style.
 - **GLM peak-hours indicator** — the Z.AI cell turns amber with a live countdown

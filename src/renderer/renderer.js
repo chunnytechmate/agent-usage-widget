@@ -96,9 +96,9 @@ function buildProviderCells(prov, am) {
   }
 
   // Full rows get their own cell with a bar; consecutive compact rows
-  // (Weekly + the per-model/Fable limit) collapse into ONE stacked cell that
-  // shows only label + %, no bars — Fable sits under Weekly, and the single
-  // shared reset window is shown once (Weekly's).
+  // (Claude Weekly + the per-model/Fable limit) collapse into ONE stacked cell
+  // that shows only label + %, no bars — Fable sits under Claude Weekly, and
+  // the single shared reset window is shown once (Claude Weekly's).
   let i = 0;
   while (i < prov.rows.length) {
     if (prov.rows[i].compact) {
@@ -117,7 +117,7 @@ function buildProviderCells(prov, am) {
 }
 
 // Stacked cell: percents only (no bars), one row per limit, with a single
-// shared reset line taken from the first (Weekly) row. A row whose model matches
+// shared reset line taken from the first (Claude Weekly) row. A row whose model matches
 // the active one gets an "Active" badge.
 function buildStackCell(prov, rows, am) {
   const cell = el('div', 'cell cell-stack');

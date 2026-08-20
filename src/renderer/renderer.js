@@ -146,8 +146,8 @@ function buildCell(prov, row, am) {
   if (active) cell.classList.add('is-active');
 
   // GLM Coding Plan peak window (attached only to the Z.AI provider). While
-  // active, the bar/dot go amber and the reset line becomes a peak countdown;
-  // the quota reset moves to the tooltip so it isn't lost.
+  // active, the bar/dot go amber and a short countdown badge sits in the head
+  // next to the label; the quota reset keeps the reset line below, untouched.
   const peak = prov.peak || null;
   const peakActive = !!(peak && peak.active);
   if (peakActive) cell.classList.add('is-peak');
@@ -158,6 +158,7 @@ function buildCell(prov, row, am) {
   head.appendChild(dot);
   head.appendChild(el('span', 'cell-label', shortLabel(row)));
   if (active) head.appendChild(el('span', 'active-badge', 'Active'));
+  if (peakActive && peak.endsAt) head.appendChild(el('span', 'peak-badge', fmtPeak(peak.endsAt)));
   const pct = el('span', 'cell-pct', (row.percent || 0) + '%');
   pct.style.color = peakActive ? 'var(--warning)' : colorFor(row.severity);
   head.appendChild(pct);
@@ -169,15 +170,15 @@ function buildCell(prov, row, am) {
   bar.appendChild(fill);
   cell.appendChild(bar);
 
+  // The quota reset always owns the reset line; the peak countdown lives in
+  // the head badge, so the usage-limit reset is never displaced. Exact peak
+  // boundary times (end now, next start later) stay in the tooltip.
+  if (row.resetsAt) cell.appendChild(el('div', 'cell-reset', fmtReset(row.resetsAt)));
   if (peakActive && peak.endsAt) {
-    cell.appendChild(el('div', 'cell-reset', fmtPeak(peak.endsAt)));
-    if (row.resetsAt) cell.title = `${prov.name} quota ${fmtReset(row.resetsAt)}`;
-  } else {
-    if (row.resetsAt) cell.appendChild(el('div', 'cell-reset', fmtReset(row.resetsAt)));
-    if (peak && peak.nextStartAt) {
-      const np = fmtNextPeak(peak.nextStartAt);
-      cell.title = cell.title ? `${cell.title} · ${np}` : np;
-    }
+    cell.title = `GLM peak 2× ends ${fmtTime(peak.endsAt)}`;
+  } else if (peak && peak.nextStartAt) {
+    const np = fmtNextPeak(peak.nextStartAt);
+    cell.title = cell.title ? `${cell.title} · ${np}` : np;
   }
   return cell;
 }
@@ -244,21 +245,25 @@ function fmtReset(iso) {
   return `reset ${days[target.getDay()]} ${time} (${cd})`;
 }
 
-// GLM peak countdown for the reset line: "peak · 2× · ends 17:00 (2h 15min)".
-// Countdown is recomputed from endsAt on every render, so it stays fresh between
-// polls (the renderer re-renders every 30s).
+// GLM peak countdown badge for the cell head: "peak ends in 2h 05m". The exact
+// end time lives in the cell tooltip; the countdown is recomputed from endsAt
+// on every render, so it stays fresh between polls (30s re-render).
 function fmtPeak(endsAt) {
-  if (!endsAt) return 'peak · 2×';
+  if (!endsAt) return 'peak ends soon';
   const target = new Date(endsAt);
   const now = new Date();
   const secs = Math.max(0, Math.floor((target - now) / 1000));
   const totalH = Math.floor(secs / 3600);
   const totalM = Math.floor((secs % 3600) / 60);
   const cd = totalH > 0
-    ? `${totalH}h ${String(totalM).padStart(2, '0')}min`
-    : `${totalM}min`;
-  const time = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return `peak · 2× · ends ${time} (${cd})`;
+    ? `${totalH}h ${String(totalM).padStart(2, '0')}m`
+    : `${totalM}m`;
+  return `peak ends in ${cd}`;
+}
+
+// Locale "HH:MM" for tooltips.
+function fmtTime(iso) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 // Next peak start for the cell tooltip: "next GLM peak Mon 13:00".
@@ -266,8 +271,7 @@ function fmtNextPeak(nextStartAt) {
   if (!nextStartAt) return '';
   const target = new Date(nextStartAt);
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const time = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return `next GLM peak ${days[target.getDay()]} ${time}`;
+  return `next GLM peak ${days[target.getDay()]} ${fmtTime(nextStartAt)}`;
 }
 
 // Compact countdown for error tooltips ("1h 30m"). Accepts an ISO string or epoch ms.

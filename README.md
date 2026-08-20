@@ -32,10 +32,11 @@ Electron + plain HTML/CSS/JS and extended into a multi-provider agent usage widg
   (percent only, no bars) to save horizontal space; their shared reset is shown once.
 - **Reset countdowns** in the `reset 22:10 (50min)` / `reset Thu 08:59 (4d 19h)` style.
 - **GLM peak-hours indicator** — the Z.AI cell turns amber with a live countdown
-  (`peak · 2× · ends 17:00 (2h 15min)`) while inside GLM's Coding Plan peak window,
-  where quota is billed at 2×. Outside the window the cell is normal and the next
-  peak start appears in its tooltip. Claude has no active peak (its throttle was
-  removed in May 2026), so only Z.AI is flagged.
+  badge (`peak ends in 2h 05m`) next to its label while inside GLM's Coding Plan
+  peak window, where quota is billed at 2×; the quota-reset line stays untouched.
+  Outside the window the cell is normal and the next peak start appears in its
+  tooltip. Claude has no active peak (its throttle was removed in May 2026), so
+  only Z.AI is flagged.
 - **Usage history + leak detection** — every poll is appended to a local daily log with how
   far each meter moved. Quota that climbs while no local agent has run for 15+ minutes is
   flagged as an **idle drain** — the signature of a leaked key, a forgotten background job,
